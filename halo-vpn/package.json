@@ -1,0 +1,78 @@
+{
+  "name": "halo-vpn",
+  "version": "1.1.1",
+  "description": "Halo — VPN-клиент по подписке на ядре mihomo",
+  "main": "electron/main.cjs",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV=1 electron .\"",
+    "build": "npm run build:service && tsc --noEmit && vite build",
+    "start": "electron .",
+    "snap": "vite build && cross-env HALO_SNAP=.shots/electron electron .",
+    "test": "node --test test/",
+    "dist": "npm run build && electron-builder --win",
+    "build:service": "node scripts/build-service.cjs"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "country-flag-icons": "^1.5.13",
+    "cross-env": "^7.0.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "framer-motion": "^11.15.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "app.halo.vpn",
+    "productName": "Halo",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/core",
+        "to": "core"
+      },
+      {
+        "from": "resources/service",
+        "to": "service"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "asInvoker",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Halo",
+      "artifactName": "Halo-Setup-${version}.exe"
+    },
+    "protocols": [
+      {
+        "name": "Halo",
+        "schemes": [
+          "halo"
+        ]
+      }
+    ]
+  }
+}
