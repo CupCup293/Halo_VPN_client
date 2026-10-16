@@ -126,7 +126,7 @@ class ServiceClient {
   async install() {
     if (!fs.existsSync(this.exePath)) throw new Error(`Не найдена служба: ${this.exePath}`);
     this.secret();
-    await this.elevated(`install "${this.secretFile}" "${this.corePath}"`);
+    await this.elevated(`install "${this.secretFile}" "${this.corePath}" "${this.errorLog()}"`);
     this.coreHash = null;
     for (let i = 0; i < 40; i++) {
       if (await this.ready()) return;
@@ -136,7 +136,12 @@ class ServiceClient {
   }
 
   async uninstall() {
-    await this.elevated('uninstall');
+    await this.elevated(`uninstall "${this.errorLog()}"`);
+  }
+
+  /** Файл, куда служба пишет причину сбоя установки (вывод процесса под UAC до нас не доходит). */
+  errorLog() {
+    return path.join(path.dirname(this.secretFile), 'service-error.log');
   }
 
   /** Запуск halo-service.exe от администратора: Windows один раз показывает UAC. */
@@ -146,10 +151,21 @@ class ServiceClient {
       `try { $p = Start-Process -FilePath ${q(this.exePath)} -ArgumentList ${q(args)} -Verb RunAs -WindowStyle Hidden -Wait -PassThru -ErrorAction Stop; exit $p.ExitCode } ` +
       `catch { Write-Output $_.Exception.Message; exit 1223 }`;
     try {
+      fs.rmSync(this.errorLog(), { force: true });
+    } catch {
+      /* нет файла */
+    }
+    try {
       await run('powershell', ['-NoProfile', '-NonInteractive', '-Command', script]);
     } catch (e) {
       if (e.code === 1223) throw new Error('Установка отменена: Windows не получила разрешение администратора');
-      throw new Error(`Служба Halo: код ${e.code}${e.stdout ? ` — ${e.stdout.trim()}` : ''}`);
+      let reason = '';
+      try {
+        reason = fs.readFileSync(this.errorLog(), 'utf8').trim();
+      } catch {
+        reason = (e.stdout || '').trim();
+      }
+      throw new Error(reason ? `Служба Halo: ${reason}` : `Служба Halo завершилась с кодом ${e.code}`);
     }
   }
 }

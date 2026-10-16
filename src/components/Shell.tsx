@@ -18,7 +18,7 @@ const NAV: { id: Screen; label: string; icon: string }[] = [
 export function TitleBar() {
   return (
     <div className="titlebar">
-      <span className="titlebar-name">Halo</span>
+      <span className="titlebar-name">Halo VPN</span>
       <div className="titlebar-buttons">
         <button onClick={() => halo.call('win:minimize')} aria-label="Свернуть">
           <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" strokeWidth="1.2" /></svg>
@@ -43,7 +43,9 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="brand">
         <motion.span className={`brand-dot ${state?.connected ? 'live' : ''}`} animate={state?.connected ? { scale: [1, 1.12, 1] } : { scale: 1 }} transition={{ duration: 2.4, repeat: Infinity }} />
-        <span>Halo</span>
+        <span>
+          Halo <span className="brand-sub">VPN</span>
+        </span>
       </div>
       <nav>
         {NAV.map((n) => (

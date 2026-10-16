@@ -5,8 +5,9 @@
 // Каждый запрос несёт секрет из файла, путь к которому задан при установке (лежит в профиле пользователя).
 // Ядро запускается только своё — mihomo.exe рядом со службой в Program Files, путь от клиента не принимается.
 //
-// halo-service.exe install <файл-секрета> <mihomo.exe>  — скопировать в Program Files, зарегистрировать и запустить
-// halo-service.exe uninstall                           — остановить и удалить
+// halo-service.exe install <файл-секрета> <mihomo.exe> [журнал]  — скопировать в Program Files, зарегистрировать и запустить
+// halo-service.exe uninstall [журнал]                           — остановить и удалить
+// Журнал: при запуске через UAC вывод теряется, поэтому причина сбоя пишется в этот файл — клиент показывает её пользователю.
 // halo-service.exe run <файл-секрета> [mihomo.exe]     — то же самое в консоли, для отладки
 using System;
 using System.Collections.Generic;
@@ -29,6 +30,7 @@ static class Program
     static int Main(string[] args)
     {
         string verb = args.Length > 0 ? args[0] : "";
+        string errorLog = verb == "install" && args.Length > 3 ? args[3] : verb == "uninstall" && args.Length > 1 ? args[1] : null;
         try
         {
             switch (verb)
@@ -55,6 +57,10 @@ static class Program
         catch (Exception e)
         {
             Console.Error.WriteLine(e.Message);
+            if (errorLog != null)
+            {
+                try { File.WriteAllText(errorLog, e.Message, Encoding.UTF8); } catch { /* некуда писать */ }
+            }
             return 1;
         }
     }
@@ -76,8 +82,20 @@ class HaloService : ServiceBase
     }
 
     protected override void OnStart(string[] args) { server.Start(); }
-    protected override void OnStop() { server.Stop(); }
-    protected override void OnShutdown() { server.Stop(); }
+    protected override void OnStop() { StopAndExit(); }
+    protected override void OnShutdown() { StopAndExit(); }
+
+    // Если после остановки процесс не завершился сам (какой-то поток не отпустил), через 3 с завершаем его,
+    // иначе служба зависает в STOP_PENDING и её нельзя ни переустановить, ни удалить.
+    void StopAndExit()
+    {
+        server.Stop();
+        new Thread(() =>
+        {
+            Thread.Sleep(3000);
+            Environment.Exit(0);
+        }) { IsBackground = true }.Start();
+    }
 }
 
 class Server
@@ -451,25 +469,84 @@ static class Installer
     {
         using (var sc = Find())
         {
-            if (sc == null) return;
-            try
+            if (sc != null)
             {
-                if (sc.Status != ServiceControllerStatus.Stopped)
+                try
                 {
-                    sc.Stop();
-                    sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
+                    if (sc.Status == ServiceControllerStatus.Running || sc.Status == ServiceControllerStatus.Paused) sc.Stop();
+                    sc.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(10));
+                }
+                catch
+                {
+                    /* не остановилась вовремя или уже остановлена — добьём ниже */
                 }
             }
-            catch
-            {
-                /* уже остановлена */
-            }
         }
+        // Служба зависла в STOP_PENDING — завершаем её процесс. И ядро из папки службы, если осталось.
+        KillServiceProcess();
+        KillFromDir(InstallDir());
         Sc("delete", Program.ServiceName);
-        for (int i = 0; i < 40; i++)
+        for (int i = 0; i < 60; i++)
         {
             using (var sc = Find()) if (sc == null) return;
             Thread.Sleep(250);
+        }
+        throw new Exception("Windows не удаляет старую службу Halo. Закройте «Службы» (services.msc), если открыто, и повторите");
+    }
+
+    static void KillServiceProcess()
+    {
+        // sc queryex печатает строку вида «PID : 4208».
+        var p = Process.Start(new ProcessStartInfo("sc.exe", "queryex " + Program.ServiceName)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        });
+        string output = p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        foreach (var line in output.Split('\n'))
+        {
+            int colon = line.IndexOf(':');
+            if (colon < 0 || line.IndexOf("PID", StringComparison.OrdinalIgnoreCase) < 0) continue;
+            int pid;
+            if (!int.TryParse(line.Substring(colon + 1).Trim(), out pid) || pid <= 4 || pid == Process.GetCurrentProcess().Id) continue;
+            try
+            {
+                var proc = Process.GetProcessById(pid);
+                proc.Kill();
+                proc.WaitForExit(5000);
+            }
+            catch
+            {
+                /* уже завершилась */
+            }
+        }
+    }
+
+    static void KillFromDir(string dir)
+    {
+        string full = Path.GetFullPath(dir).TrimEnd('\\') + "\\";
+        foreach (var name in new[] { "mihomo", "halo-service" })
+        {
+            foreach (var proc in Process.GetProcessesByName(name))
+            {
+                try
+                {
+                    if (proc.Id == Process.GetCurrentProcess().Id) continue;
+                    if (!proc.MainModule.FileName.StartsWith(full, StringComparison.OrdinalIgnoreCase)) continue;
+                    proc.Kill();
+                    proc.WaitForExit(5000);
+                }
+                catch
+                {
+                    /* нет доступа или уже завершён */
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
         }
     }
 
@@ -515,7 +592,7 @@ static class Installer
             }
             catch
             {
-                if (i >= 20) throw;
+                if (i >= 40) throw;
                 Thread.Sleep(250);
             }
         }

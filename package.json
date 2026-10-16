@@ -1,7 +1,7 @@
 {
   "name": "halo-vpn",
-  "version": "1.1.1",
-  "description": "Halo — VPN-клиент по подписке на ядре mihomo",
+  "version": "1.1.2",
+  "description": "Halo VPN",
   "main": "electron/main.cjs",
   "private": true,
   "scripts": {
@@ -63,16 +63,18 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "Halo",
-      "artifactName": "Halo-Setup-${version}.exe"
+      "shortcutName": "Halo VPN",
+      "artifactName": "Halo-Setup-${version}.exe",
+      "uninstallDisplayName": "Halo VPN"
     },
     "protocols": [
       {
-        "name": "Halo",
+        "name": "Halo VPN",
         "schemes": [
           "halo"
         ]
       }
-    ]
+    ],
+    "copyright": "Halo VPN"
   }
 }
