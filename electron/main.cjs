@@ -11,6 +11,7 @@ const { ServiceClient } = require('./service.cjs');
 const { circlePng } = require('./icon.cjs');
 
 const isDev = !!process.env.VITE_DEV;
+const APP_NAME = 'Halo VPN';
 const DELAY_TIMEOUT = 5000;
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -133,7 +134,7 @@ async function toggle() {
     if (connected) await disconnect();
     else await connect();
   } catch (e) {
-    notify('Halo', e.message);
+    notify(APP_NAME, e.message);
     send('error', { message: e.message, code: e.code });
   }
 }
@@ -350,7 +351,7 @@ async function handleDeepLink(argv) {
     if (store.data.profiles.some((p) => p.url === sub)) return showWindow();
     await addProfile(sub, u.searchParams.get('name') || undefined);
     showWindow();
-    notify('Halo', 'Подписка добавлена');
+    notify(APP_NAME, 'Подписка добавлена');
   } catch (e) {
     send('error', { message: e.message });
   }
@@ -365,6 +366,7 @@ function createWindow() {
     minWidth: 1040,
     minHeight: 680,
     frame: false,
+    title: APP_NAME,
     backgroundColor: '#15161b',
     icon: nativeImage.createFromBuffer(circlePng(64)),
     show: false,
@@ -426,7 +428,7 @@ function showWindow() {
 function updateTray() {
   if (!tray) return;
   tray.setImage(nativeImage.createFromBuffer(circlePng(32, connected)).resize({ width: 16, height: 16 }));
-  tray.setToolTip(connected ? 'Halo — подключено' : 'Halo — отключено');
+  tray.setToolTip(`${APP_NAME} — ${connected ? 'подключено' : 'отключено'}`);
   const s = store.data.settings;
   const setMode = (mode) => setSettings({ mode });
   tray.setContextMenu(
@@ -516,7 +518,7 @@ async function autoConnect() {
       return;
     } catch (e) {
       if (e.code === 'NEED_ADMIN' || attempt === 6) {
-        notify('Halo', `Не удалось подключиться автоматически: ${e.message}`);
+        notify(APP_NAME, `Не удалось подключиться автоматически: ${e.message}`);
         send('error', { message: e.message, code: e.code });
         return;
       }
@@ -724,6 +726,9 @@ app.on('second-instance', (_e, argv) => {
   showWindow();
   handleDeepLink(argv);
 });
+
+// Имя в уведомлениях Windows берётся у ярлыка с этим AppUserModelId (appId из сборки).
+app.setAppUserModelId('app.halo.vpn');
 
 app.whenReady().then(() => {
   store = new Store(app.getPath('userData'));
